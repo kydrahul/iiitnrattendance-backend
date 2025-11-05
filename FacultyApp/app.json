@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "IIIT NR Faculty",
+    "slug": "iiitnr-faculty",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#1E3A8A"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.iiitnr.faculty"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1E3A8A"
+      },
+      "package": "com.iiitnr.faculty",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-barcode-scanner",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access camera to scan QR codes."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to verify attendance."
+        }
+      ]
+    ]
+  }
+}

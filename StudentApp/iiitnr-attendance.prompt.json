@@ -1,0 +1,346 @@
+{
+  "project": {
+    "name": "IIITNR Attendance System",
+    "version": "1.0.0",
+    "type": "monorepo",
+    "apps": {
+      "student": {
+        "name": "iiitnr-attendance",
+        "screens": {
+          "auth": {
+            "splash": {
+              "duration": 2000,
+              "branding": "IIIT NR Attendance"
+            },
+            "login": {
+              "roles": ["student"],
+              "fields": ["email", "password"]
+            }
+          },
+          "main": {
+            "home": {
+              "sections": [
+                "todaySchedule",
+                "enrolledCourses"
+              ],
+              "actions": ["scanQR", "viewProfile"]
+            },
+            "scanner": {
+              "permissions": ["camera", "location"],
+              "features": [
+                "qrScanning",
+                "locationVerification",
+                "hapticFeedback"
+              ]
+            },
+            "courseDetail": {
+              "sections": [
+                "attendanceStats",
+                "sessionHistory"
+              ]
+            }
+          }
+        }
+      },
+      "faculty": {
+        "name": "iiitnr-faculty",
+        "screens": {
+          "auth": {
+            "login": {
+              "roles": ["faculty"],
+              "fields": ["email", "password"]
+            }
+          },
+          "main": {
+            "courseList": {
+              "displayFields": [
+                "courseName",
+                "branch",
+                "year",
+                "session"
+              ]
+            },
+            "courseDetail": {
+              "tabs": [
+                "liveAttendance",
+                "manualAttendance",
+                "statistics"
+              ],
+              "qrGeneration": {
+                "timeOptions": [30, 60, 120, 300],
+                "locationSetup": true
+              }
+            },
+            "manualAttendance": {
+              "search": {
+                "fields": ["name", "rollNumber"],
+                "type": "instant"
+              },
+              "list": {
+                "pagination": true,
+                "pageSize": 100
+              }
+            },
+            "statistics": {
+              "views": ["daily", "weekly", "monthly"],
+              "metrics": [
+                "totalPresent",
+                "percentagePresent",
+                "qrScans",
+                "manualEntries"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "shared": {
+      "designSystem": {
+        "colors": {
+          "primary": "#1E3A8A",
+          "secondary": "#312E81",
+          "accent": "#A3E635",
+          "error": "#DC2626",
+          "warning": "#F59E0B",
+          "success": "#10B981",
+          "background": "#FFFFFF",
+          "surface": "#F3F4F6",
+          "text": {
+            "primary": "#1F2937",
+            "secondary": "#6B7280",
+            "disabled": "#9CA3AF"
+          }
+        },
+        "typography": {
+          "fontFamily": "Inter",
+          "sizes": {
+            "headline": 24,
+            "subheading": 18,
+            "body": 16,
+            "caption": 12
+          },
+          "weights": {
+            "bold": "700",
+            "semibold": "600",
+            "regular": "400"
+          }
+        },
+        "spacing": {
+          "base": 8,
+          "small": 8,
+          "medium": 16,
+          "large": 24,
+          "xlarge": 32
+        },
+        "borderRadius": {
+          "button": 12,
+          "card": 16,
+          "modal": 20
+        }
+      },
+      "types": {
+        "User": {
+          "id": "string",
+          "name": "string",
+          "email": "string",
+          "role": "enum('student', 'faculty')"
+        },
+        "Course": {
+          "id": "string",
+          "code": "string",
+          "name": "string",
+          "faculty": "string",
+          "branch": "string",
+          "year": "number",
+          "session": "string"
+        },
+        "AttendanceSession": {
+          "id": "string",
+          "courseId": "string",
+          "timestamp": "number",
+          "expiresIn": "number",
+          "location": {
+            "latitude": "number",
+            "longitude": "number",
+            "radius": "number"
+          },
+          "status": "enum('active', 'completed', 'expired')"
+        },
+        "AttendanceRecord": {
+          "sessionId": "string",
+          "studentId": "string",
+          "timestamp": "number",
+          "type": "enum('qr', 'manual')",
+          "location": {
+            "latitude": "number",
+            "longitude": "number",
+            "accuracy": "number"
+          },
+          "status": "enum('scanned', 'verified', 'failed')"
+        }
+      }
+    },
+    "api": {
+      "baseUrl": "/api",
+      "endpoints": {
+        "auth": {
+          "login": {
+            "method": "POST",
+            "path": "/auth/login",
+            "body": {
+              "email": "string",
+              "password": "string",
+              "role": "string"
+            },
+            "response": {
+              "token": "string",
+              "user": "User"
+            }
+          },
+          "refresh": {
+            "method": "POST",
+            "path": "/auth/refresh",
+            "body": {
+              "refreshToken": "string"
+            },
+            "response": {
+              "token": "string"
+            }
+          }
+        },
+        "courses": {
+          "list": {
+            "method": "GET",
+            "path": "/courses",
+            "response": {
+              "courses": "Course[]"
+            }
+          },
+          "details": {
+            "method": "GET",
+            "path": "/courses/:id",
+            "response": {
+              "course": "Course"
+            }
+          }
+        },
+        "attendance": {
+          "generateQR": {
+            "method": "POST",
+            "path": "/attendance/generate",
+            "body": {
+              "courseId": "string",
+              "expiresIn": "number",
+              "location": {
+                "latitude": "number",
+                "longitude": "number"
+              }
+            },
+            "response": {
+              "sessionId": "string",
+              "qrData": "string"
+            }
+          },
+          "verifyQR": {
+            "method": "POST",
+            "path": "/attendance/verify",
+            "body": {
+              "qrData": "string",
+              "location": {
+                "latitude": "number",
+                "longitude": "number",
+                "accuracy": "number"
+              }
+            },
+            "response": {
+              "verified": "boolean",
+              "sessionId": "string",
+              "message": "string"
+            }
+          },
+          "markManual": {
+            "method": "POST",
+            "path": "/attendance/manual",
+            "body": {
+              "sessionId": "string",
+              "studentIds": "string[]",
+              "status": "enum('present', 'absent')"
+            },
+            "response": {
+              "updated": "number"
+            }
+          },
+          "getStats": {
+            "method": "GET",
+            "path": "/attendance/stats/:courseId",
+            "query": {
+              "from": "date",
+              "to": "date"
+            },
+            "response": {
+              "total": "number",
+              "present": "number",
+              "absent": "number",
+              "byDate": "Record<string, { present: number, absent: number }>"
+            }
+          }
+        }
+      }
+    },
+    "technical": {
+      "location": {
+        "provider": "expo-location",
+        "settings": {
+          "accuracy": "BestForNavigation",
+          "timeInterval": 1000,
+          "distanceInterval": 1
+        }
+      },
+      "qrCode": {
+        "format": "JWT",
+        "payload": {
+          "sessionId": "string",
+          "courseId": "string",
+          "timestamp": "number",
+          "expiresIn": "number",
+          "location": {
+            "latitude": "number",
+            "longitude": "number",
+            "radius": "number"
+          }
+        },
+        "security": {
+          "algorithm": "HS256",
+          "expiryCheck": true,
+          "locationVerification": true
+        }
+      },
+      "realtime": {
+        "provider": "socket.io",
+        "events": {
+          "student": [
+            "SCAN_QR",
+            "LOCATION_VERIFIED",
+            "ATTENDANCE_MARKED"
+          ],
+          "faculty": [
+            "SESSION_CREATED",
+            "STUDENT_SCANNED",
+            "ATTENDANCE_UPDATED"
+          ]
+        }
+      },
+      "storage": {
+        "local": {
+          "provider": "@react-native-async-storage/async-storage",
+          "keys": [
+            "AUTH_TOKEN",
+            "USER_DATA",
+            "COURSE_CACHE",
+            "ATTENDANCE_QUEUE"
+          ]
+        }
+      }
+    }
+  }
+}
