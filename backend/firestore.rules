@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isFaculty() {
+      return request.auth != null && request.auth.token.role == 'faculty';
+    }
+    
+    function isStudent() {
+      return request.auth != null && request.auth.token.role == 'student';
+    }
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function hasValidEmail() {
+      return request.auth.token.email.matches('.*@iiitnr[.]edu[.]in$');
+    }
+
+    // QR Session collection
+    match /qrSessions/{sessionId} {
+      // Faculty can create and manage sessions
+      allow create, update, delete: if isFaculty() && hasValidEmail();
+      // Students and faculty can read active sessions
+      allow read: if isAuthenticated() && hasValidEmail();
+    }
+
+    // Attendance records
+    match /attendance/{recordId} {
+      // Faculty can read all records
+      allow read: if isFaculty() && hasValidEmail();
+      // Students can only create and read their own records
+      allow create: if isStudent() && hasValidEmail() && 
+        request.resource.data.studentId == request.auth.uid;
+      allow read: if isStudent() && hasValidEmail() && 
+        resource.data.studentId == request.auth.uid;
+    }
+
+    // Student profiles
+    match /students/{studentId} {
+      // Students can read/write their own profile
+      allow read, write: if isStudent() && hasValidEmail() && 
+        studentId == request.auth.uid;
+      // Faculty can read all student profiles
+      allow read: if isFaculty() && hasValidEmail();
+    }
+  }
+}
