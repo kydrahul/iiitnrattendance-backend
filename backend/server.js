@@ -67,7 +67,8 @@ app.use(cors({
     'http://localhost:3000',
     'https://iiitnrattendence.netlify.app',
     'https://iiitnrattendence.vercel.app',
-    'https://rahull-prog.github.io'
+    'https://rahull-prog.github.io',
+    'https://kydrahul.github.io'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
