@@ -1,0 +1,6 @@
+0000000000000000000000000000000000000000 e4409c3ee2d84fb83b8150bf3f304c8cdc672a1c rahull-prog <rahulbarma2004@users.noreply.github.com> 1763804112 +0530	commit (initial): Backend optimizations: 1100m geofence, caching, batch reads, rate limiting
+e4409c3ee2d84fb83b8150bf3f304c8cdc672a1c e4409c3ee2d84fb83b8150bf3f304c8cdc672a1c rahull-prog <rahulbarma2004@users.noreply.github.com> 1763804123 +0530	Branch: renamed refs/heads/master to refs/heads/main
+e4409c3ee2d84fb83b8150bf3f304c8cdc672a1c d8fddd071e3169ae38727604ec30b1bdfd128895 rahull-prog <rahulbarma2004@users.noreply.github.com> 1765268356 +0530	commit: update backend
+d8fddd071e3169ae38727604ec30b1bdfd128895 cdfeed8af7bec0218d7145e24214fe2bb56735e7 rahull-prog <rahulbarma2004@users.noreply.github.com> 1765297613 +0530	commit: Add attendance grid endpoint and CORS config
+cdfeed8af7bec0218d7145e24214fe2bb56735e7 01916eb147057b1f10f79fc3f44fd8c2eac6dc6f rahull-prog <rahulbarma2004@users.noreply.github.com> 1765297662 +0530	pull --rebase origin main (finish): refs/heads/main onto 0abf3aa964d252df76e000c683394debf847686a
+01916eb147057b1f10f79fc3f44fd8c2eac6dc6f ed8dfffaf6da94242f00eab8890521e91d6592df rahull-prog <rahulbarma2004@users.noreply.github.com> 1765298712 +0530	commit: Force backend update for attendance grid endpoint
