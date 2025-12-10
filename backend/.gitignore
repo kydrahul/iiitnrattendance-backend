@@ -12,3 +12,12 @@ backend/
 logs
 *.log
 npm-debug.log*
+
+# Security & Cleanup
+*.json
+!package.json
+!package-lock.json
+!firebase.json
+!firestore.indexes.json
+!firestore.rules
+
