@@ -531,17 +531,21 @@ app.post('/api/student/scan-qr', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'Invalid QR signature' });
     }
 
-    // Check if QR is expired
-    if (Date.now() > payload.expiresAt) {
+    // Check if QR is expired (with 30s grace period for network/processing latency)
+    const GRACE_PERIOD_MS = 30 * 1000;
+    if (Date.now() > (payload.expiresAt + GRACE_PERIOD_MS)) {
       return res.status(400).json({ error: 'QR code has expired' });
     }
 
     // NEW: Check if QR is the LATEST version (if versioning is used)
+    // Relaxed version check: Allow previous version if within grace period overlap
     if (payload.qrVersion) {
       const activeQRDoc = await db.collection('activeQRs').doc(payload.sessionId).get();
       if (activeQRDoc.exists) {
         const activeQR = activeQRDoc.data();
-        if (activeQR.qrVersion && payload.qrVersion !== activeQR.qrVersion) {
+        // Only enforce strict version mismatch if significantly past the expected expiration
+        // This allows a "just expired" QR to still work if the student scanned it right as it changed
+        if (activeQR.qrVersion && payload.qrVersion !== activeQR.qrVersion && Date.now() > (payload.expiresAt + GRACE_PERIOD_MS)) {
           return res.status(400).json({ error: 'QR code has expired (new QR available)' });
         }
       }
@@ -947,6 +951,27 @@ app.get('/api/student/courses', verifyToken, async (req, res) => {
         }
       }
 
+      // Get sessions for all courses to calculate accurate percentage (Total Sessions vs Present)
+      const sessionCounts = new Map();
+      if (courseIds.length > 0) {
+        // Fetch all sessions for these courses
+        // We do this in batches of 10
+        for (let i = 0; i < courseIds.length; i += 10) {
+          const batch = courseIds.slice(i, i + 10);
+          const sessionsSnapshot = await db.collection('sessions')
+            .where('courseId', 'in', batch)
+            // Only count past/current sessions, not future ones
+            .where('date', '<=', admin.firestore.Timestamp.now())
+            .get();
+
+          sessionsSnapshot.docs.forEach(doc => {
+            const data = doc.data();
+            const courseId = data.courseId;
+            sessionCounts.set(courseId, (sessionCounts.get(courseId) || 0) + 1);
+          });
+        }
+      }
+
       // Combine data with attendance stats and faculty contact
       courseDocs.forEach((courseDoc, index) => {
         if (courseDoc.exists) {
@@ -954,9 +979,14 @@ app.get('/api/student/courses', verifyToken, async (req, res) => {
           const facultyData = facultyMap.get(courseData.facultyId);
           const attendanceStats = attendanceMap.get(courseDoc.id) || { total: 0, present: 0, absent: 0 };
 
-          // Calculate attendance percentage
-          const attendancePercentage = attendanceStats.total > 0
-            ? Math.round((attendanceStats.present / attendanceStats.total) * 100)
+          // Use actual session count from sessions collection
+          const totalSessions = sessionCounts.get(courseDoc.id) || 0;
+          const attended = attendanceStats.present;
+          const missed = totalSessions - attended; // Derived missed count
+
+          // Calculate attendance percentage based on Total Sessions
+          const attendancePercentage = totalSessions > 0
+            ? Math.round((attended / totalSessions) * 100)
             : 0;
 
           courses.push({
@@ -965,9 +995,9 @@ app.get('/api/student/courses', verifyToken, async (req, res) => {
             facultyName: facultyData?.name || 'Unknown',
             enrolledDate: enrollmentsSnapshot.docs[index].data().enrolledAt,
             // Add attendance statistics
-            totalClasses: attendanceStats.total,
-            attended: attendanceStats.present,
-            missed: attendanceStats.absent,
+            totalClasses: totalSessions, // Updated to use actual session count
+            attended: attended,
+            missed: missed > 0 ? missed : 0,
             attendance: attendancePercentage,
             // Add faculty contact information
             contact: {
@@ -1067,80 +1097,83 @@ app.get('/api/student/timetable', verifyToken, async (req, res) => {
           const batch = courseIds.slice(i, i + 10);
           const batchSnapshot = await db.collection('attendance')
             .where('studentId', '==', userId)
-            .where('courseId', 'in', batch)
-            .get();
+        });
 
-          batchSnapshot.docs.forEach(doc => {
-            const data = doc.data();
-            const courseId = data.courseId;
-            if (!attendanceMap.has(courseId)) {
-              attendanceMap.set(courseId, { total: 0, present: 0 });
-            }
-            const stats = attendanceMap.get(courseId);
-            stats.total++;
-            if (data.status === 'present') {
-              stats.present++;
-            }
+// Get sessions for all courses to calculate accurate percentage
+const sessionCounts = new Map();
+const uniqueCourseIds = [...new Set(courseIds)];
+if (uniqueCourseIds.length > 0) {
+  const sessionBatches = [];
+  for (let i = 0; i < uniqueCourseIds.length; i += 10) {
+    sessionBatches.push(uniqueCourseIds.slice(i, i + 10));
+  }
+
+  for (const batch of sessionBatches) {
+    const sessionsSnapshot = await db.collection('sessions')
+      .where('courseId', 'in', batch)
+      .where('date', '<=', admin.firestore.Timestamp.now())
+      .get();
+
+    sessionsSnapshot.docs.forEach(doc => {
+      const cid = doc.data().courseId;
+      sessionCounts.set(cid, (sessionCounts.get(cid) || 0) + 1);
+    });
+  }
+}
+
+// Build timetable
+courseDocs.forEach(courseDoc => {
+  if (courseDoc.exists) {
+    const course = courseDoc.data();
+    const facultyData = facultyMap.get(course.facultyId);
+
+    // Calculate attendance percentage for this course
+    const stats = attendanceMap.get(courseDoc.id) || { total: 0, present: 0 };
+    const totalSessions = sessionCounts.get(courseDoc.id) || 0;
+
+    const attendancePercentage = totalSessions > 0
+      ? Math.round((stats.present / totalSessions) * 100)
+      : 0;
+
+    if (Array.isArray(course.timetable)) {
+      course.timetable.forEach(slot => {
+        if (timetable[slot.day]) {
+          timetable[slot.day].push({
+            time: slot.time,
+            courseId: courseDoc.id, // Added courseId for redirection
+            courseCode: course.code,
+            courseName: course.name,
+            type: slot.type,
+            room: slot.room,
+            facultyName: facultyData?.name || 'Unknown',
+            attendance: attendancePercentage // Added attendance percentage
           });
-        }
-      }
-
-      // Build timetable
-      courseDocs.forEach(courseDoc => {
-        if (courseDoc.exists) {
-          const course = courseDoc.data();
-          const facultyData = facultyMap.get(course.facultyId);
-
-          // Calculate attendance percentage for this course
-          const stats = attendanceMap.get(courseDoc.id) || { total: 0, present: 0 };
-          const attendancePercentage = stats.total > 0
-            ? Math.round((stats.present / stats.total) * 100)
-            : 0;
-
-
-
-          // ... (existing code)
-
-          if (Array.isArray(course.timetable)) {
-            course.timetable.forEach(slot => {
-              if (timetable[slot.day]) {
-                timetable[slot.day].push({
-                  time: slot.time,
-                  courseId: courseDoc.id, // Added courseId for redirection
-                  courseCode: course.code,
-                  courseName: course.name,
-                  type: slot.type,
-                  room: slot.room,
-                  facultyName: facultyData?.name || 'Unknown',
-                  attendance: attendancePercentage // Added attendance percentage
-                });
-              }
-            });
-          }
         }
       });
     }
-
-    // Sort each day's slots by time
-    Object.keys(timetable).forEach(day => {
-      timetable[day].sort((a, b) => {
-        const timeA = a.time.split(' - ')[0];
-        const timeB = b.time.split(' - ')[0];
-        return timeA.localeCompare(timeB);
-      });
-    });
-
-    const result = { success: true, timetable };
-
-    // Cache for 1 hour
-    studentCache.set(cacheKey, result);
-
-    res.json(result);
-  } catch (error) {
-    console.error('Error fetching timetable:', error);
-    res.status(500).json({ error: 'Failed to fetch timetable' });
   }
 });
+
+// Sort each day's slots by time
+Object.keys(timetable).forEach(day => {
+  timetable[day].sort((a, b) => {
+    const timeA = a.time.split(' - ')[0];
+    const timeB = b.time.split(' - ')[0];
+    return timeA.localeCompare(timeB);
+  });
+});
+
+const result = { success: true, timetable };
+
+// Cache for 1 hour
+studentCache.set(cacheKey, result);
+
+res.json(result);
+    } catch (error) {
+  console.error('Error fetching timetable:', error);
+  res.status(500).json({ error: 'Failed to fetch timetable' });
+}
+  });
 
 
 // ============================================
