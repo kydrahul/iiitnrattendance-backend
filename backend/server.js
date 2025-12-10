@@ -582,17 +582,38 @@ app.post('/api/student/scan-qr', verifyToken, async (req, res) => {
     let isNew = false;
 
     if (!attendanceSnapshot.empty) {
-      const attendanceDoc = attendanceSnapshot.docs[0];
-      const attendanceData = attendanceDoc.data();
+      // HANDLE DUPLICATES: If multiple records exist, keep one and delete others
+      if (attendanceSnapshot.size > 1) {
+        console.warn(`[DUPLICATE FIX] Found ${attendanceSnapshot.size} records for session ${payload.sessionId} student ${userId}. Cleaning up.`);
+        const docs = attendanceSnapshot.docs;
+        // Sort by 'present' status first, then last modified? 
+        // Simple heuristic: Keep the one that is 'present' if any, otherwise the first one.
 
-      if (attendanceData.status === 'present') {
+        let targetDoc = docs.find(d => d.data().status === 'present') || docs[0];
+        attendanceRef = targetDoc.ref;
+
+        // Delete others
+        const batch = db.batch();
+        docs.forEach(d => {
+          if (d.id !== targetDoc.id) {
+            batch.delete(d.ref);
+          }
+        });
+        await batch.commit();
+      } else {
+        const attendanceDoc = attendanceSnapshot.docs[0];
+        attendanceRef = attendanceDoc.ref;
+      }
+
+      const currentData = (await attendanceRef.get()).data();
+      if (currentData.status === 'present') {
         return res.status(400).json({ error: 'Attendance already marked for this session' });
       }
 
-      attendanceRef = attendanceDoc.ref;
     } else {
-      // Fallback: Create new if not found (e.g. late enrollment)
-      attendanceRef = db.collection('attendance').doc();
+      // Fallback: Create new with DETERMINISTIC ID to prevent race conditions
+      // ID format: sessionId_studentId
+      attendanceRef = db.collection('attendance').doc(`${payload.sessionId}_${userId}`);
       isNew = true;
     }
 
@@ -1541,7 +1562,7 @@ app.post('/api/faculty/generate-qr', verifyToken, async (req, res) => {
         const studentData = studentDoc.data();
         const studentId = studentDoc.id;
 
-        const attendanceRef = db.collection('attendance').doc();
+        const attendanceRef = db.collection('attendance').doc(`${sessionId}_${studentId}`);
         batch.set(attendanceRef, {
           sessionId,
           courseId,
