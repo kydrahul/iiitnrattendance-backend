@@ -842,6 +842,9 @@ app.post('/api/student/join-course', verifyToken, async (req, res) => {
       enrolledCount: admin.firestore.FieldValue.increment(1)
     });
 
+    // Invalidate cache
+    invalidateStudentCache(userId);
+
     res.json({
       success: true,
       message: 'Successfully joined course',
@@ -1036,22 +1039,80 @@ app.get('/api/student/timetable', verifyToken, async (req, res) => {
         });
       }
 
+      // Get attendance stats for all courses
+      const attendanceSnapshot = await db.collection('attendance')
+        .where('studentId', '==', userId)
+        .where('courseId', 'in', courseIds.slice(0, 10)) // Firestore 'in' limit is 10
+        .get();
+
+      // Build attendance map by courseId
+      const attendanceMap = new Map();
+      attendanceSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        const courseId = data.courseId;
+
+        if (!attendanceMap.has(courseId)) {
+          attendanceMap.set(courseId, { total: 0, present: 0 });
+        }
+        const stats = attendanceMap.get(courseId);
+        stats.total++;
+        if (data.status === 'present') {
+          stats.present++;
+        }
+      });
+
+      // If more than 10 courses, fetch remaining attendance in batches
+      if (courseIds.length > 10) {
+        for (let i = 10; i < courseIds.length; i += 10) {
+          const batch = courseIds.slice(i, i + 10);
+          const batchSnapshot = await db.collection('attendance')
+            .where('studentId', '==', userId)
+            .where('courseId', 'in', batch)
+            .get();
+
+          batchSnapshot.docs.forEach(doc => {
+            const data = doc.data();
+            const courseId = data.courseId;
+            if (!attendanceMap.has(courseId)) {
+              attendanceMap.set(courseId, { total: 0, present: 0 });
+            }
+            const stats = attendanceMap.get(courseId);
+            stats.total++;
+            if (data.status === 'present') {
+              stats.present++;
+            }
+          });
+        }
+      }
+
       // Build timetable
       courseDocs.forEach(courseDoc => {
         if (courseDoc.exists) {
           const course = courseDoc.data();
           const facultyData = facultyMap.get(course.facultyId);
 
+          // Calculate attendance percentage for this course
+          const stats = attendanceMap.get(courseDoc.id) || { total: 0, present: 0 };
+          const attendancePercentage = stats.total > 0
+            ? Math.round((stats.present / stats.total) * 100)
+            : 0;
+
+
+
+          // ... (existing code)
+
           if (Array.isArray(course.timetable)) {
             course.timetable.forEach(slot => {
               if (timetable[slot.day]) {
                 timetable[slot.day].push({
                   time: slot.time,
+                  courseId: courseDoc.id, // Added courseId for redirection
                   courseCode: course.code,
                   courseName: course.name,
                   type: slot.type,
                   room: slot.room,
-                  facultyName: facultyData?.name || 'Unknown'
+                  facultyName: facultyData?.name || 'Unknown',
+                  attendance: attendancePercentage // Added attendance percentage
                 });
               }
             });
@@ -1387,6 +1448,23 @@ app.post('/api/faculty/generate-qr', verifyToken, async (req, res) => {
       return res.status(403).json({ error: 'You are not authorized to create sessions for this course' });
     }
 
+    // Find matching timetable slot to use scheduled time if possible
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const now = new Date();
+    const today = days[now.getDay()];
+
+    let scheduledStart = null;
+    if (course.timetable && Array.isArray(course.timetable)) {
+      // time format example: "10:00 AM - 11:00 AM"
+      const currentSlot = course.timetable.find(t => t.day === today);
+      if (currentSlot && currentSlot.time) {
+        // Simple heuristic: if we are starting within the slot window or slightly before
+        // For now, just taking the start time string from the slot to look professional
+        const [start] = currentSlot.time.split(' - ');
+        if (start) scheduledStart = start;
+      }
+    }
+
     // Create session
     const sessionData = cleanObject({
       courseId,
@@ -1394,7 +1472,7 @@ app.post('/api/faculty/generate-qr', verifyToken, async (req, res) => {
       courseCode: course.code,
       facultyId,
       date: admin.firestore.Timestamp.now(),
-      startTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      startTime: scheduledStart || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       roomNumber,
       locationLatitude: latitude,
       locationLongitude: longitude,
@@ -1847,6 +1925,9 @@ app.post('/api/faculty/session/:sessionId/manual-attendance', verifyToken, async
         presentCount: admin.firestore.FieldValue.increment(increment)
       });
     }
+
+    // Invalidate student cache
+    invalidateStudentCache(studentId);
 
     res.json({ success: true, message: `Student marked ${status}` });
 
