@@ -481,7 +481,10 @@ app.get('/api/student/profile', verifyToken, async (req, res) => {
     res.json({ success: true, student });
   } catch (error) {
     console.error('Error fetching student profile:', error);
-    res.status(500).json({ error: 'Failed to fetch student profile' });
+    res.status(500).json({
+      error: 'Failed to fetch student profile',
+      details: error.message // Expose error details for debugging
+    });
   }
 });
 
